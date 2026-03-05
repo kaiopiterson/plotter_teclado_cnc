@@ -100,22 +100,57 @@ void moveAxis(long target,
 }
 
 // ============================
-
 void moveTo(long x,long z){
 
-  moveAxis(x,
-           X_STEP,X_DIR,
-           STEP_DELAY_WORK_X,
-           posX,
-           X_MAX,
-           INVERT_X_DIR);
+  long dx = x - posX;
+  long dz = z - posZ;
 
-  moveAxis(z,
-           Z_STEP,Z_DIR,
-           STEP_DELAY_WORK_Z,
-           posZ,
-           Z_MAX,
-           INVERT_Z_DIR);
+  bool dirX = dx > 0;
+  bool dirZ = dz > 0;
+
+  setDir(X_DIR, dirX, INVERT_X_DIR);
+  setDir(Z_DIR, dirZ, INVERT_Z_DIR);
+
+  long stepsX = abs(dx);
+  long stepsZ = abs(dz);
+
+  long maxSteps = max(stepsX, stepsZ);
+
+  long accX = 0;
+  long accZ = 0;
+
+  for(long i=0;i<maxSteps;i++){
+
+    accX += stepsX;
+    accZ += stepsZ;
+
+    if(accX >= maxSteps){
+
+      if((dirX && posX < X_MAX) || (!dirX && posX > 0)){
+
+        stepOnce(X_STEP, STEP_DELAY_WORK_X);
+        posX += dirX ? 1 : -1;
+
+      }
+
+      accX -= maxSteps;
+
+    }
+
+    if(accZ >= maxSteps){
+
+      if((dirZ && posZ < Z_MAX) || (!dirZ && posZ > 0)){
+
+        stepOnce(Z_STEP, STEP_DELAY_WORK_Z);
+        posZ += dirZ ? 1 : -1;
+
+      }
+
+      accZ -= maxSteps;
+
+    }
+
+  }
 
 }
 
@@ -208,10 +243,11 @@ struct KeyMap{
 
 KeyMap keys[] = {
 
- {"ENTER",75,330},
- {"ESP",30,72},
+ {"ENTER",88,330},
+ {"ESP",60,92},
  {"K",46,130},
  {"A",190,198},
+ {"M",46,128},
  {"S",165,173},
  {"I",65,165},
  {"O",60,180},
@@ -292,6 +328,18 @@ void executeGcode(String line){
 
   line.trim();
   line.toUpperCase();
+
+  if(line == "RESTART"){
+
+    Serial.println("Reiniciando homing...");
+
+    loopActive = false;
+
+    homing();
+
+    return;
+
+  }
 
   if(line.startsWith("G0") || line.startsWith("G1")){
 
