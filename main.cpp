@@ -22,7 +22,7 @@ Servo servoZ;
 
 #define BACKOFF_STEPS 20
 
-// ===== VELOCIDADE HOMING (TORQUE) =====
+// ===== VELOCIDADE HOMING =====
 #define STEP_DELAY_HOME_X 5000
 #define STEP_DELAY_HOME_Z 6000
 
@@ -30,7 +30,7 @@ Servo servoZ;
 #define STEP_DELAY_WORK_X 2500
 #define STEP_DELAY_WORK_Z 3000
 
-// ===== SERVO CONFIG =====
+// ===== SERVO =====
 #define SERVO_UP 80
 #define SERVO_TOUCH 0
 
@@ -40,13 +40,12 @@ Servo servoZ;
 long posX = 0;
 long posZ = 0;
 
-// ===== CONTROLE DE LOOP =====
+// ===== LOOP =====
 bool loopActive = false;
 String loopCommand = "";
 
 // ============================
 // STEP
-
 void stepOnce(int stepPin,int delayTime){
 
   digitalWrite(stepPin,HIGH);
@@ -59,7 +58,6 @@ void stepOnce(int stepPin,int delayTime){
 
 // ============================
 // DIREÇÃO
-
 void setDir(int dirPin,bool dir,bool invert){
 
   bool finalDir = invert ? !dir : dir;
@@ -245,20 +243,32 @@ KeyMap keys[] = {
 
  {"ENTER",88,330},
  {"ESP",60,92},
- {"K",46,130},
- {"A",190,198},
+ {"A",190,220},
+ {"S",166,200},
+ {"D",142,180},
+ {"F",120,166},
+ {"G",108,168},
+ {"H",90,164},
+ {"J",72,160},
+ {"K",60,168},
+ {"L",52,182},
+ {"Z",170,176},
+ {"X",144,156},
+ {"C",123,140},
+ {"V",100,130},
+ {"B",80,128},
+ {"N",66,133},
  {"M",46,128},
- {"S",165,173},
- {"I",65,165},
- {"O",60,180},
- {"U",80,165},
- {"Y",96,165},
- {"P",55,198},
- {"T",116,170},
- {"R",140,182},
- {"E",160,198},
- {"W",182,219},
- {"Q",212,260}
+ {"I",89,210},
+ {"O",86,228},
+ {"P",86,250},
+ {"Y",114,201},
+ {"U",100,200},
+ {"T",128,199},
+ {"R",146,214},
+ {"E",171,233},
+ {"W",199,268},
+ {"Q",236,319}
 
 };
 
@@ -284,6 +294,75 @@ void typeKey(String k){
 
   Serial.print("Tecla nao mapeada: ");
   Serial.println(k);
+
+}
+
+// ============================
+// TESTE AVANÇADO
+
+void testLine(String line){
+
+  int start=0;
+
+  while(true){
+
+    int spaceIndex=line.indexOf(' ',start);
+
+    String key;
+
+    if(spaceIndex==-1)
+      key=line.substring(start);
+    else
+      key=line.substring(start,spaceIndex);
+
+    key.trim();
+
+    if(key.length()>0)
+      typeKey(key);
+
+    if(spaceIndex==-1)
+      break;
+
+    start=spaceIndex+1;
+
+  }
+
+}
+
+void testKeyboardAdvanced(){
+
+  Serial.println("TESTE AVANCADO INICIADO");
+
+  unsigned long startTime = millis();
+
+  Serial.println("Linha QWERTY");
+  testLine("Q W E R T Y U I O P");
+
+  delay(300);
+
+  Serial.println("Linha ASDF");
+  testLine("A S D F G H J K L");
+
+  delay(300);
+
+  Serial.println("Linha ZXCV");
+  testLine("Z X C V B N M");
+
+  delay(300);
+
+  Serial.println("ESPACO E ENTER");
+  testLine("ESP ENTER");
+
+  unsigned long endTime = millis();
+
+  Serial.println("Voltando para HOME");
+
+  homing();
+
+  Serial.print("Tempo total (ms): ");
+  Serial.println(endTime-startTime);
+
+  Serial.println("TESTE FINALIZADO");
 
 }
 
@@ -328,6 +407,16 @@ void executeGcode(String line){
 
   line.trim();
   line.toUpperCase();
+
+  if(line == "TEST"){
+
+    loopActive=false;
+
+    testKeyboardAdvanced();
+
+    return;
+
+  }
 
   if(line == "RESTART"){
 
