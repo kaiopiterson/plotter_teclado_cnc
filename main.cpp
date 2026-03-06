@@ -40,12 +40,14 @@ Servo servoZ;
 long posX = 0;
 long posZ = 0;
 
-// ===== LOOP =====
 bool loopActive = false;
 String loopCommand = "";
 
+bool typeFileMode = false;
+
 // ============================
 // STEP
+
 void stepOnce(int stepPin,int delayTime){
 
   digitalWrite(stepPin,HIGH);
@@ -58,6 +60,7 @@ void stepOnce(int stepPin,int delayTime){
 
 // ============================
 // DIREÇÃO
+
 void setDir(int dirPin,bool dir,bool invert){
 
   bool finalDir = invert ? !dir : dir;
@@ -69,35 +72,6 @@ void setDir(int dirPin,bool dir,bool invert){
 // ============================
 // MOVIMENTO
 
-void moveAxis(long target,
-              int stepPin,
-              int dirPin,
-              int delayTime,
-              long &pos,
-              long maxTravel,
-              bool invertDir){
-
-  long steps = target-pos;
-
-  bool dir = steps>0;
-
-  setDir(dirPin,dir,invertDir);
-
-  long total=abs(steps);
-
-  for(long i=0;i<total;i++){
-
-    if(dir && pos>=maxTravel) return;
-    if(!dir && pos<=0) return;
-
-    stepOnce(stepPin,delayTime);
-
-    pos += dir ? 1 : -1;
-  }
-
-}
-
-// ============================
 void moveTo(long x,long z){
 
   long dx = x - posX;
@@ -298,6 +272,43 @@ void typeKey(String k){
 }
 
 // ============================
+// DIGITAR TEXTO
+
+void typeText(String text){
+
+  text.toUpperCase();
+
+  for(int i=0;i<text.length();i++){
+
+    char c = text.charAt(i);
+
+    if(c==' '){
+
+      typeKey("ESP");
+      continue;
+
+    }
+
+    String key = String(c);
+
+    typeKey(key);
+
+  }
+
+}
+
+// ============================
+// DIGITAR LINHA
+
+void typeLine(String text){
+
+  typeText(text);
+
+  typeKey("ENTER");
+
+}
+
+// ============================
 // TESTE AVANÇADO
 
 void testLine(String line){
@@ -335,27 +346,18 @@ void testKeyboardAdvanced(){
 
   unsigned long startTime = millis();
 
-  Serial.println("Linha QWERTY");
   testLine("Q W E R T Y U I O P");
-
   delay(300);
 
-  Serial.println("Linha ASDF");
   testLine("A S D F G H J K L");
-
   delay(300);
 
-  Serial.println("Linha ZXCV");
   testLine("Z X C V B N M");
-
   delay(300);
 
-  Serial.println("ESPACO E ENTER");
   testLine("ESP ENTER");
 
   unsigned long endTime = millis();
-
-  Serial.println("Voltando para HOME");
 
   homing();
 
@@ -367,40 +369,6 @@ void testKeyboardAdvanced(){
 }
 
 // ============================
-// EXECUTAR SEQUENCIA
-
-void executeSequence(String line){
-
-  line.toUpperCase();
-
-  int start = 0;
-
-  while(true){
-
-    int spaceIndex = line.indexOf(' ', start);
-
-    String word;
-
-    if(spaceIndex == -1)
-      word = line.substring(start);
-    else
-      word = line.substring(start, spaceIndex);
-
-    word.trim();
-
-    if(word.length() > 0)
-      typeKey(word);
-
-    if(spaceIndex == -1)
-      break;
-
-    start = spaceIndex + 1;
-
-  }
-
-}
-
-// ============================
 // EXECUTAR COMANDOS
 
 void executeGcode(String line){
@@ -408,29 +376,40 @@ void executeGcode(String line){
   line.trim();
   line.toUpperCase();
 
+  if(line.startsWith("TYPE ")){
+
+    String text = line.substring(5);
+
+    typeText(text);
+
+    return;
+
+  }
+
+  if(line == "TYPEFILE"){
+
+    Serial.println("Modo TYPEFILE iniciado");
+    typeFileMode = true;
+
+    return;
+
+  }
+
   if(line == "TEST"){
 
-    loopActive=false;
-
     testKeyboardAdvanced();
-
     return;
 
   }
 
   if(line == "RESTART"){
 
-    Serial.println("Reiniciando homing...");
-
-    loopActive = false;
-
     homing();
-
     return;
 
   }
 
-  if(line.startsWith("G0") || line.startsWith("G1")){
+  if(line.startsWith("G1")){
 
     int xi = line.indexOf('X');
     int zi = line.indexOf('Z');
@@ -443,11 +422,6 @@ void executeGcode(String line){
 
     moveTo(newX,newZ);
 
-    Serial.print("POS X=");
-    Serial.print(posX);
-    Serial.print(" Z=");
-    Serial.println(posZ);
-
     return;
 
   }
@@ -455,40 +429,9 @@ void executeGcode(String line){
   if(line == "CLICK"){
 
     pressKey();
-
-    Serial.println("CLICK executado");
-
     return;
 
   }
-
-  if(line.endsWith("LOOP")){
-
-    loopCommand = line.substring(0,line.length()-4);
-
-    loopCommand.trim();
-
-    loopActive = true;
-
-    Serial.println("LOOP iniciado");
-
-    return;
-
-  }
-
-  if(line == "PAUSE"){
-
-    loopActive = false;
-
-    Serial.println("LOOP parado");
-
-    moveTo(20,20);
-
-    return;
-
-  }
-
-  executeSequence(line);
 
 }
 
@@ -526,15 +469,26 @@ void loop(){
 
     String line = Serial.readStringUntil('\n');
 
+    line.trim();
+
+    if(typeFileMode){
+
+      if(line == "ENDFILE"){
+
+        typeFileMode=false;
+
+        Serial.println("TYPEFILE finalizado");
+
+        return;
+
+      }
+
+      typeLine(line);
+      return;
+
+    }
+
     executeGcode(line);
-
-  }
-
-  if(loopActive){
-
-    executeSequence(loopCommand);
-
-    delay(300);
 
   }
 
