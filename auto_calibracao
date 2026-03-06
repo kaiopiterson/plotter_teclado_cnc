@@ -1,0 +1,398 @@
+#include <Servo.h>
+
+Servo servoZ;
+
+// ===== PINOS =====
+#define X_STEP 2
+#define X_DIR 5
+#define X_LIMIT 9
+
+#define Z_STEP 4
+#define Z_DIR 7
+#define Z_LIMIT 11
+
+#define SERVO_PIN 12
+
+// ===== CONFIG =====
+#define INVERT_X_DIR false
+#define INVERT_Z_DIR true
+
+#define X_MAX 600
+#define Z_MAX 700
+
+#define BACKOFF_STEPS 20
+
+// ===== VELOCIDADE =====
+#define STEP_DELAY_HOME_X 5000
+#define STEP_DELAY_HOME_Z 6000
+
+#define STEP_DELAY_WORK_X 2500
+#define STEP_DELAY_WORK_Z 3000
+
+// ===== SERVO =====
+#define SERVO_UP 80
+#define SERVO_TOUCH 0
+
+#define SERVO_SPEED 4
+#define SERVO_PRESS_TIME 60
+
+long posX = 0;
+long posZ = 0;
+
+bool loopActive=false;
+String loopCommand="";
+
+// ============================
+// ESTRUTURA TECLADO
+
+struct KeyMap{
+  String key;
+  float x;
+  float z;
+};
+
+KeyMap keys[40];
+int keyCount=0;
+
+// ============================
+// PONTOS DE CALIBRACAO
+
+struct Point{
+  float x;
+  float z;
+};
+
+Point pQ,pP,pA,pL,pZ,pM;
+
+bool calibrationMode=false;
+int calibrationStep=0;
+
+// ============================
+// STEP
+
+void stepOnce(int stepPin,int delayTime){
+
+  digitalWrite(stepPin,HIGH);
+  delayMicroseconds(delayTime);
+
+  digitalWrite(stepPin,LOW);
+  delayMicroseconds(delayTime);
+
+}
+
+// ============================
+
+void setDir(int dirPin,bool dir,bool invert){
+
+  bool finalDir=invert ? !dir : dir;
+
+  digitalWrite(dirPin, finalDir ? HIGH : LOW);
+
+}
+
+// ============================
+
+void moveTo(long x,long z){
+
+  long dx = x-posX;
+  long dz = z-posZ;
+
+  bool dirX = dx>0;
+  bool dirZ = dz>0;
+
+  setDir(X_DIR,dirX,INVERT_X_DIR);
+  setDir(Z_DIR,dirZ,INVERT_Z_DIR);
+
+  long stepsX=abs(dx);
+  long stepsZ=abs(dz);
+
+  long maxSteps=max(stepsX,stepsZ);
+
+  long accX=0;
+  long accZ=0;
+
+  for(long i=0;i<maxSteps;i++){
+
+    accX+=stepsX;
+    accZ+=stepsZ;
+
+    if(accX>=maxSteps){
+
+      stepOnce(X_STEP,STEP_DELAY_WORK_X);
+      posX+=dirX?1:-1;
+      accX-=maxSteps;
+
+    }
+
+    if(accZ>=maxSteps){
+
+      stepOnce(Z_STEP,STEP_DELAY_WORK_Z);
+      posZ+=dirZ?1:-1;
+      accZ-=maxSteps;
+
+    }
+
+  }
+
+}
+
+// ============================
+// SERVO
+
+void servoMoveSmooth(int target){
+
+  int current=servoZ.read();
+
+  if(current<target){
+
+    for(int p=current;p<=target;p+=SERVO_SPEED){
+      servoZ.write(p);
+      delay(5);
+    }
+
+  }else{
+
+    for(int p=current;p>=target;p-=SERVO_SPEED){
+      servoZ.write(p);
+      delay(5);
+    }
+
+  }
+
+}
+
+void pressKey(){
+
+  servoMoveSmooth(SERVO_TOUCH);
+
+  delay(SERVO_PRESS_TIME);
+
+  servoMoveSmooth(SERVO_UP);
+
+}
+
+// ============================
+// GERAR TECLADO AUTOMATICO
+
+void generateKeyboard(){
+
+  keyCount=0;
+
+  float topDX=(pP.x-pQ.x)/9.0;
+  float topDZ=(pP.z-pQ.z)/9.0;
+
+  float midDX=(pL.x-pA.x)/8.0;
+  float midDZ=(pL.z-pA.z)/8.0;
+
+  float botDX=(pM.x-pZ.x)/6.0;
+  float botDZ=(pM.z-pZ.z)/6.0;
+
+  String top="QWERTYUIOP";
+
+  for(int i=0;i<10;i++){
+
+    keys[keyCount].key=String(top[i]);
+    keys[keyCount].x=pQ.x+(topDX*i);
+    keys[keyCount].z=pQ.z+(topDZ*i);
+
+    keyCount++;
+
+  }
+
+  String mid="ASDFGHJKL";
+
+  for(int i=0;i<9;i++){
+
+    keys[keyCount].key=String(mid[i]);
+    keys[keyCount].x=pA.x+(midDX*i);
+    keys[keyCount].z=pA.z+(midDZ*i);
+
+    keyCount++;
+
+  }
+
+  String bot="ZXCVBNM";
+
+  for(int i=0;i<7;i++){
+
+    keys[keyCount].key=String(bot[i]);
+    keys[keyCount].x=pZ.x+(botDX*i);
+    keys[keyCount].z=pZ.z+(botDZ*i);
+
+    keyCount++;
+
+  }
+
+  Serial.println("Teclado calculado");
+
+}
+
+// ============================
+
+void requestNextPoint(){
+
+  String names[6]={"Q","P","A","L","Z","M"};
+
+  Serial.print("POSICIONE EM ");
+  Serial.println(names[calibrationStep]);
+
+}
+
+// ============================
+
+void saveCalibrationPoint(){
+
+  if(calibrationStep==0){ pQ.x=posX; pQ.z=posZ; }
+  if(calibrationStep==1){ pP.x=posX; pP.z=posZ; }
+  if(calibrationStep==2){ pA.x=posX; pA.z=posZ; }
+  if(calibrationStep==3){ pL.x=posX; pL.z=posZ; }
+  if(calibrationStep==4){ pZ.x=posX; pZ.z=posZ; }
+  if(calibrationStep==5){ pM.x=posX; pM.z=posZ; }
+
+  calibrationStep++;
+
+  if(calibrationStep==6){
+
+    generateKeyboard();
+
+    calibrationMode=false;
+
+    Serial.println("Calibracao concluida");
+
+    return;
+
+  }
+
+  requestNextPoint();
+
+}
+
+// ============================
+
+void typeKey(String k){
+
+  for(int i=0;i<keyCount;i++){
+
+    if(keys[i].key==k){
+
+      moveTo(keys[i].x,keys[i].z);
+
+      pressKey();
+
+      return;
+
+    }
+
+  }
+
+  Serial.println("Tecla nao encontrada");
+
+}
+
+// ============================
+
+void executeSequence(String line){
+
+  line.toUpperCase();
+
+  for(int i=0;i<line.length();i++){
+
+    char c=line.charAt(i);
+
+    if(c==' ') continue;
+
+    typeKey(String(c));
+
+  }
+
+}
+
+// ============================
+
+void executeGcode(String line){
+
+  line.trim();
+  line.toUpperCase();
+
+  if(line=="CAL"){
+
+    calibrationMode=true;
+    calibrationStep=0;
+
+    Serial.println("Modo calibracao");
+
+    requestNextPoint();
+
+    return;
+
+  }
+
+  if(line=="SET" && calibrationMode){
+
+    saveCalibrationPoint();
+
+    return;
+
+  }
+
+  if(line.startsWith("G1")){
+
+    int xi=line.indexOf('X');
+    int zi=line.indexOf('Z');
+
+    long newX=posX;
+    long newZ=posZ;
+
+    if(xi>=0) newX=line.substring(xi+1).toInt();
+    if(zi>=0) newZ=line.substring(zi+1).toInt();
+
+    moveTo(newX,newZ);
+
+    Serial.print("POS ");
+    Serial.print(posX);
+    Serial.print(" ");
+    Serial.println(posZ);
+
+    return;
+
+  }
+
+  executeSequence(line);
+
+}
+
+// ============================
+
+void setup(){
+
+  Serial.begin(115200);
+
+  servoZ.attach(SERVO_PIN);
+
+  pinMode(X_STEP,OUTPUT);
+  pinMode(X_DIR,OUTPUT);
+  pinMode(X_LIMIT,INPUT_PULLUP);
+
+  pinMode(Z_STEP,OUTPUT);
+  pinMode(Z_DIR,OUTPUT);
+  pinMode(Z_LIMIT,INPUT_PULLUP);
+
+  servoZ.write(SERVO_UP);
+
+  Serial.println("CNC Keyboard pronta");
+
+}
+
+// ============================
+
+void loop(){
+
+  if(Serial.available()){
+
+    String line=Serial.readStringUntil('\n');
+
+    executeGcode(line);
+
+  }
+
+}
