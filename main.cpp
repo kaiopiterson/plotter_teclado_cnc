@@ -14,8 +14,7 @@ Servo servoZ;
 
 #define SERVO_PIN 12
 
-// ===== BLUETOOTH =====
-SoftwareSerial BT(A3, 13); // RX, TX
+SoftwareSerial BT(A3,13);
 
 // ===== CONFIG =====
 #define INVERT_X_DIR false
@@ -26,11 +25,10 @@ SoftwareSerial BT(A3, 13); // RX, TX
 
 #define BACKOFF_STEPS 20
 
-// ===== VELOCIDADE HOMING =====
+// ===== VELOCIDADE =====
 #define STEP_DELAY_HOME_X 5000
 #define STEP_DELAY_HOME_Z 6000
 
-// ===== VELOCIDADE DIGITAÇÃO =====
 #define STEP_DELAY_WORK_X 2500
 #define STEP_DELAY_WORK_Z 3000
 
@@ -45,36 +43,36 @@ SoftwareSerial BT(A3, 13); // RX, TX
 #define CMD_BUFFER_SIZE 10
 
 String cmdBuffer[CMD_BUFFER_SIZE];
-int cmdHead = 0;
-int cmdTail = 0;
+int cmdHead=0;
+int cmdTail=0;
 
-long posX = 0;
-long posZ = 0;
+long posX=0;
+long posZ=0;
 
 // ============================
 // BUFFER
 
 bool bufferEmpty(){
-  return cmdHead == cmdTail;
+  return cmdHead==cmdTail;
 }
 
 bool bufferFull(){
-  return ((cmdHead + 1) % CMD_BUFFER_SIZE) == cmdTail;
+  return ((cmdHead+1)%CMD_BUFFER_SIZE)==cmdTail;
 }
 
 void pushCommand(String cmd){
 
   if(!bufferFull()){
-    cmdBuffer[cmdHead] = cmd;
-    cmdHead = (cmdHead + 1) % CMD_BUFFER_SIZE;
+    cmdBuffer[cmdHead]=cmd;
+    cmdHead=(cmdHead+1)%CMD_BUFFER_SIZE;
   }
 
 }
 
 String popCommand(){
 
-  String cmd = cmdBuffer[cmdTail];
-  cmdTail = (cmdTail + 1) % CMD_BUFFER_SIZE;
+  String cmd=cmdBuffer[cmdTail];
+  cmdTail=(cmdTail+1)%CMD_BUFFER_SIZE;
   return cmd;
 
 }
@@ -82,12 +80,11 @@ String popCommand(){
 // ============================
 // STEP
 
-void stepOnce(int stepPin,int delayTime){
+void stepPulse(int pin,int delayTime){
 
-  digitalWrite(stepPin,HIGH);
+  digitalWrite(pin,HIGH);
   delayMicroseconds(delayTime);
-
-  digitalWrite(stepPin,LOW);
+  digitalWrite(pin,LOW);
   delayMicroseconds(delayTime);
 
 }
@@ -97,62 +94,59 @@ void stepOnce(int stepPin,int delayTime){
 
 void setDir(int dirPin,bool dir,bool invert){
 
-  bool finalDir = invert ? !dir : dir;
+  bool finalDir=invert ? !dir : dir;
   digitalWrite(dirPin, finalDir ? HIGH : LOW);
 
 }
 
 // ============================
-// MOVIMENTO
+// INTERLEAVE OTIMIZADO
 
 void moveTo(long x,long z){
 
-  long dx = x - posX;
-  long dz = z - posZ;
+  long dx=x-posX;
+  long dz=z-posZ;
 
-  bool dirX = dx > 0;
-  bool dirZ = dz > 0;
+  bool dirX=dx>0;
+  bool dirZ=dz>0;
 
-  setDir(X_DIR, dirX, INVERT_X_DIR);
-  setDir(Z_DIR, dirZ, INVERT_Z_DIR);
+  setDir(X_DIR,dirX,INVERT_X_DIR);
+  setDir(Z_DIR,dirZ,INVERT_Z_DIR);
 
-  long stepsX = abs(dx);
-  long stepsZ = abs(dz);
+  long stepsX=abs(dx);
+  long stepsZ=abs(dz);
 
-  long maxSteps = max(stepsX, stepsZ);
+  long maxSteps=max(stepsX,stepsZ);
 
-  long accX = 0;
-  long accZ = 0;
+  float incX=(float)stepsX/maxSteps;
+  float incZ=(float)stepsZ/maxSteps;
+
+  float accX=0;
+  float accZ=0;
 
   for(long i=0;i<maxSteps;i++){
 
-    accX += stepsX;
-    accZ += stepsZ;
+    accX+=incX;
+    accZ+=incZ;
 
-    if(accX >= maxSteps){
+    if(accX>=1){
 
-      if((dirX && posX < X_MAX) || (!dirX && posX > 0)){
-
-        stepOnce(X_STEP, STEP_DELAY_WORK_X);
-        posX += dirX ? 1 : -1;
-
+      if((dirX && posX<X_MAX) || (!dirX && posX>0)){
+        stepPulse(X_STEP,STEP_DELAY_WORK_X);
+        posX+=dirX?1:-1;
       }
 
-      accX -= maxSteps;
-
+      accX-=1;
     }
 
-    if(accZ >= maxSteps){
+    if(accZ>=1){
 
-      if((dirZ && posZ < Z_MAX) || (!dirZ && posZ > 0)){
-
-        stepOnce(Z_STEP, STEP_DELAY_WORK_Z);
-        posZ += dirZ ? 1 : -1;
-
+      if((dirZ && posZ<Z_MAX) || (!dirZ && posZ>0)){
+        stepPulse(Z_STEP,STEP_DELAY_WORK_Z);
+        posZ+=dirZ?1:-1;
       }
 
-      accZ -= maxSteps;
-
+      accZ-=1;
     }
 
   }
@@ -162,27 +156,21 @@ void moveTo(long x,long z){
 // ============================
 // HOMING
 
-void homingAxis(int stepPin,
-                int dirPin,
-                int limitPin,
-                int delayTime,
-                long &pos,
-                bool invertDir){
+void homingAxis(int stepPin,int dirPin,int limitPin,int delayTime,long &pos,bool invertDir){
 
   setDir(dirPin,false,invertDir);
 
   while(digitalRead(limitPin)==LOW){
-    stepOnce(stepPin,delayTime);
+    stepPulse(stepPin,delayTime);
   }
 
   setDir(dirPin,true,invertDir);
 
   for(int i=0;i<BACKOFF_STEPS;i++){
-    stepOnce(stepPin,delayTime);
+    stepPulse(stepPin,delayTime);
   }
 
   pos=0;
-
 }
 
 void homing(){
@@ -204,19 +192,18 @@ void homing(){
 
 void servoMoveSmooth(int target){
 
-  int current = servoZ.read();
+  int current=servoZ.read();
 
-  if(current < target){
+  if(current<target){
 
-    for(int p=current; p<=target; p+=SERVO_SPEED){
+    for(int p=current;p<=target;p+=SERVO_SPEED){
       servoZ.write(p);
       delay(5);
     }
 
-  }
-  else{
+  }else{
 
-    for(int p=current; p>=target; p-=SERVO_SPEED){
+    for(int p=current;p>=target;p-=SERVO_SPEED){
       servoZ.write(p);
       delay(5);
     }
@@ -234,7 +221,7 @@ void pressKey(){
 }
 
 // ============================
-// MAPA TECLADO
+// MAPA
 
 struct KeyMap{
   String key;
@@ -275,7 +262,7 @@ KeyMap keys[] = {
 
 };
 
-int keyCount = sizeof(keys)/sizeof(keys[0]);
+int keyCount=sizeof(keys)/sizeof(keys[0]);
 
 // ============================
 
@@ -284,18 +271,14 @@ void typeKey(String k){
   for(int i=0;i<keyCount;i++){
 
     if(keys[i].key==k){
-
       moveTo(keys[i].x,keys[i].z);
       pressKey();
       return;
-
     }
 
   }
 
 }
-
-// ============================
 
 void typeText(String text){
 
@@ -303,7 +286,7 @@ void typeText(String text){
 
   for(int i=0;i<text.length();i++){
 
-    char c = text.charAt(i);
+    char c=text.charAt(i);
 
     if(c==' '){
       typeKey("ESP");
@@ -314,46 +297,48 @@ void typeText(String text){
 
   }
 
+  // ENTER AUTOMÁTICO APÓS O TEXTO
+  typeKey("ENTER");
+
 }
 
 // ============================
+// BENCHMARK
 
 void benchmarkTest(){
 
   Serial.println("BENCHMARK iniciado");
 
-  unsigned long startTime = millis();
-  int totalKeys = 0;
+  unsigned long startTime=millis();
+
+  int totalKeys=0;
 
   String test1="QWERTYUIOP";
   String test2="ASDFGHJKL";
   String test3="ZXCVBNM";
 
   typeText(test1);
-  totalKeys += test1.length();
-
-  typeKey("ENTER");
-  totalKeys++;
+  totalKeys+=test1.length()+1;
 
   typeText(test2);
-  totalKeys += test2.length();
-
-  typeKey("ENTER");
-  totalKeys++;
+  totalKeys+=test2.length()+1;
 
   typeText(test3);
-  totalKeys += test3.length();
+  totalKeys+=test3.length()+1;
 
-  unsigned long totalTime = millis() - startTime;
+  unsigned long totalTime=millis()-startTime;
 
-  float keysPerSecond = (float)totalKeys / (totalTime / 1000.0);
-  float keysPerMinute = keysPerSecond * 60.0;
+  float keysPerSecond=(float)totalKeys/(totalTime/1000.0);
+  float keysPerMinute=keysPerSecond*60.0;
 
   Serial.print("Teclas digitadas: ");
   Serial.println(totalKeys);
 
   Serial.print("Tempo total (ms): ");
   Serial.println(totalTime);
+
+  Serial.print("Teclas/segundo: ");
+  Serial.println(keysPerSecond);
 
   Serial.print("Teclas/minuto: ");
   Serial.println(keysPerMinute);
@@ -374,35 +359,34 @@ void executeGcode(String line){
     typeText(line.substring(5));
   }
 
-  else if(line == "BENCHMARK"){
+  else if(line=="BENCHMARK"){
     benchmarkTest();
   }
 
-  else if(line == "RESTART"){
+  else if(line=="RESTART"){
     homing();
   }
 
   else if(line.startsWith("G1")){
 
-    int xi = line.indexOf('X');
-    int zi = line.indexOf('Z');
+    int xi=line.indexOf('X');
+    int zi=line.indexOf('Z');
 
-    long newX = posX;
-    long newZ = posZ;
+    long newX=posX;
+    long newZ=posZ;
 
-    if(xi>=0) newX = line.substring(xi+1).toInt();
-    if(zi>=0) newZ = line.substring(zi+1).toInt();
+    if(xi>=0)newX=line.substring(xi+1).toInt();
+    if(zi>=0)newZ=line.substring(zi+1).toInt();
 
     moveTo(newX,newZ);
   }
 
-  else if(line == "CLICK"){
+  else if(line=="CLICK"){
     pressKey();
   }
 
   Serial.println("OK");
   BT.println("OK");
-
 }
 
 // ============================
@@ -436,22 +420,16 @@ void setup(){
 
 void loop(){
 
-  // Recebe SERIAL
   if(Serial.available()){
-    String line = Serial.readStringUntil('\n');
-    pushCommand(line);
+    pushCommand(Serial.readStringUntil('\n'));
   }
 
-  // Recebe BLUETOOTH
   if(BT.available()){
-    String line = BT.readStringUntil('\n');
-    pushCommand(line);
+    pushCommand(BT.readStringUntil('\n'));
   }
 
-  // Executa fila
   if(!bufferEmpty()){
-    String cmd = popCommand();
-    executeGcode(cmd);
+    executeGcode(popCommand());
   }
 
 }
