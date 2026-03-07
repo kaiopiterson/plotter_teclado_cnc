@@ -41,8 +41,43 @@ SoftwareSerial BT(A3, 13); // RX, TX
 #define SERVO_SPEED 4
 #define SERVO_PRESS_TIME 60
 
+// ===== BUFFER =====
+#define CMD_BUFFER_SIZE 10
+
+String cmdBuffer[CMD_BUFFER_SIZE];
+int cmdHead = 0;
+int cmdTail = 0;
+
 long posX = 0;
 long posZ = 0;
+
+// ============================
+// BUFFER
+
+bool bufferEmpty(){
+  return cmdHead == cmdTail;
+}
+
+bool bufferFull(){
+  return ((cmdHead + 1) % CMD_BUFFER_SIZE) == cmdTail;
+}
+
+void pushCommand(String cmd){
+
+  if(!bufferFull()){
+    cmdBuffer[cmdHead] = cmd;
+    cmdHead = (cmdHead + 1) % CMD_BUFFER_SIZE;
+  }
+
+}
+
+String popCommand(){
+
+  String cmd = cmdBuffer[cmdTail];
+  cmdTail = (cmdTail + 1) % CMD_BUFFER_SIZE;
+  return cmd;
+
+}
 
 // ============================
 // STEP
@@ -202,11 +237,9 @@ void pressKey(){
 // MAPA TECLADO
 
 struct KeyMap{
-
   String key;
   int x;
   int z;
-
 };
 
 KeyMap keys[] = {
@@ -216,7 +249,7 @@ KeyMap keys[] = {
  {"A",190,220},
  {"S",166,200},
  {"D",142,180},
- {"F",120,166},
+ {"F",124,170},
  {"G",108,168},
  {"H",90,164},
  {"J",72,160},
@@ -263,7 +296,6 @@ void typeKey(String k){
 }
 
 // ============================
-// DIGITAR TEXTO
 
 void typeText(String text){
 
@@ -274,10 +306,8 @@ void typeText(String text){
     char c = text.charAt(i);
 
     if(c==' '){
-
       typeKey("ESP");
       continue;
-
     }
 
     typeKey(String(c));
@@ -287,14 +317,12 @@ void typeText(String text){
 }
 
 // ============================
-// BENCHMARK
 
 void benchmarkTest(){
 
   Serial.println("BENCHMARK iniciado");
 
   unsigned long startTime = millis();
-
   int totalKeys = 0;
 
   String test1="QWERTYUIOP";
@@ -316,9 +344,7 @@ void benchmarkTest(){
   typeText(test3);
   totalKeys += test3.length();
 
-  unsigned long endTime = millis();
-
-  unsigned long totalTime = endTime - startTime;
+  unsigned long totalTime = millis() - startTime;
 
   float keysPerSecond = (float)totalKeys / (totalTime / 1000.0);
   float keysPerMinute = keysPerSecond * 60.0;
@@ -328,9 +354,6 @@ void benchmarkTest(){
 
   Serial.print("Tempo total (ms): ");
   Serial.println(totalTime);
-
-  Serial.print("Teclas/segundo: ");
-  Serial.println(keysPerSecond);
 
   Serial.print("Teclas/minuto: ");
   Serial.println(keysPerMinute);
@@ -348,27 +371,18 @@ void executeGcode(String line){
   line.toUpperCase();
 
   if(line.startsWith("TYPE ")){
-
     typeText(line.substring(5));
-    return;
-
   }
 
-  if(line == "BENCHMARK"){
-
+  else if(line == "BENCHMARK"){
     benchmarkTest();
-    return;
-
   }
 
-  if(line == "RESTART"){
-
+  else if(line == "RESTART"){
     homing();
-    return;
-
   }
 
-  if(line.startsWith("G1")){
+  else if(line.startsWith("G1")){
 
     int xi = line.indexOf('X');
     int zi = line.indexOf('Z');
@@ -380,16 +394,14 @@ void executeGcode(String line){
     if(zi>=0) newZ = line.substring(zi+1).toInt();
 
     moveTo(newX,newZ);
-    return;
-
   }
 
-  if(line == "CLICK"){
-
+  else if(line == "CLICK"){
     pressKey();
-    return;
-
   }
+
+  Serial.println("OK");
+  BT.println("OK");
 
 }
 
@@ -424,18 +436,22 @@ void setup(){
 
 void loop(){
 
+  // Recebe SERIAL
   if(Serial.available()){
-
     String line = Serial.readStringUntil('\n');
-    executeGcode(line);
-
+    pushCommand(line);
   }
 
+  // Recebe BLUETOOTH
   if(BT.available()){
-
     String line = BT.readStringUntil('\n');
-    executeGcode(line);
+    pushCommand(line);
+  }
 
+  // Executa fila
+  if(!bufferEmpty()){
+    String cmd = popCommand();
+    executeGcode(cmd);
   }
 
 }
