@@ -1,4 +1,5 @@
 #include <Servo.h>
+#include <SoftwareSerial.h>
 
 Servo servoZ;
 
@@ -12,6 +13,9 @@ Servo servoZ;
 #define Z_LIMIT 11
 
 #define SERVO_PIN 12
+
+// ===== BLUETOOTH =====
+SoftwareSerial BT(A3, 13); // RX, TX
 
 // ===== CONFIG =====
 #define INVERT_X_DIR false
@@ -40,11 +44,6 @@ Servo servoZ;
 long posX = 0;
 long posZ = 0;
 
-bool loopActive = false;
-String loopCommand = "";
-
-bool typeFileMode = false;
-
 // ============================
 // STEP
 
@@ -64,7 +63,6 @@ void stepOnce(int stepPin,int delayTime){
 void setDir(int dirPin,bool dir,bool invert){
 
   bool finalDir = invert ? !dir : dir;
-
   digitalWrite(dirPin, finalDir ? HIGH : LOW);
 
 }
@@ -195,9 +193,7 @@ void servoMoveSmooth(int target){
 void pressKey(){
 
   servoMoveSmooth(SERVO_TOUCH);
-
   delay(SERVO_PRESS_TIME);
-
   servoMoveSmooth(SERVO_UP);
 
 }
@@ -257,17 +253,12 @@ void typeKey(String k){
     if(keys[i].key==k){
 
       moveTo(keys[i].x,keys[i].z);
-
       pressKey();
-
       return;
 
     }
 
   }
-
-  Serial.print("Tecla nao mapeada: ");
-  Serial.println(k);
 
 }
 
@@ -289,82 +280,62 @@ void typeText(String text){
 
     }
 
-    String key = String(c);
-
-    typeKey(key);
+    typeKey(String(c));
 
   }
 
 }
 
 // ============================
-// DIGITAR LINHA
+// BENCHMARK
 
-void typeLine(String text){
+void benchmarkTest(){
 
-  typeText(text);
-
-  typeKey("ENTER");
-
-}
-
-// ============================
-// TESTE AVANÇADO
-
-void testLine(String line){
-
-  int start=0;
-
-  while(true){
-
-    int spaceIndex=line.indexOf(' ',start);
-
-    String key;
-
-    if(spaceIndex==-1)
-      key=line.substring(start);
-    else
-      key=line.substring(start,spaceIndex);
-
-    key.trim();
-
-    if(key.length()>0)
-      typeKey(key);
-
-    if(spaceIndex==-1)
-      break;
-
-    start=spaceIndex+1;
-
-  }
-
-}
-
-void testKeyboardAdvanced(){
-
-  Serial.println("TESTE AVANCADO INICIADO");
+  Serial.println("BENCHMARK iniciado");
 
   unsigned long startTime = millis();
 
-  testLine("Q W E R T Y U I O P");
-  delay(300);
+  int totalKeys = 0;
 
-  testLine("A S D F G H J K L");
-  delay(300);
+  String test1="QWERTYUIOP";
+  String test2="ASDFGHJKL";
+  String test3="ZXCVBNM";
 
-  testLine("Z X C V B N M");
-  delay(300);
+  typeText(test1);
+  totalKeys += test1.length();
 
-  testLine("ESP ENTER");
+  typeKey("ENTER");
+  totalKeys++;
+
+  typeText(test2);
+  totalKeys += test2.length();
+
+  typeKey("ENTER");
+  totalKeys++;
+
+  typeText(test3);
+  totalKeys += test3.length();
 
   unsigned long endTime = millis();
 
-  homing();
+  unsigned long totalTime = endTime - startTime;
+
+  float keysPerSecond = (float)totalKeys / (totalTime / 1000.0);
+  float keysPerMinute = keysPerSecond * 60.0;
+
+  Serial.print("Teclas digitadas: ");
+  Serial.println(totalKeys);
 
   Serial.print("Tempo total (ms): ");
-  Serial.println(endTime-startTime);
+  Serial.println(totalTime);
 
-  Serial.println("TESTE FINALIZADO");
+  Serial.print("Teclas/segundo: ");
+  Serial.println(keysPerSecond);
+
+  Serial.print("Teclas/minuto: ");
+  Serial.println(keysPerMinute);
+
+  Serial.println("BENCHMARK finalizado");
 
 }
 
@@ -378,26 +349,14 @@ void executeGcode(String line){
 
   if(line.startsWith("TYPE ")){
 
-    String text = line.substring(5);
-
-    typeText(text);
-
+    typeText(line.substring(5));
     return;
 
   }
 
-  if(line == "TYPEFILE"){
+  if(line == "BENCHMARK"){
 
-    Serial.println("Modo TYPEFILE iniciado");
-    typeFileMode = true;
-
-    return;
-
-  }
-
-  if(line == "TEST"){
-
-    testKeyboardAdvanced();
+    benchmarkTest();
     return;
 
   }
@@ -421,7 +380,6 @@ void executeGcode(String line){
     if(zi>=0) newZ = line.substring(zi+1).toInt();
 
     moveTo(newX,newZ);
-
     return;
 
   }
@@ -440,6 +398,7 @@ void executeGcode(String line){
 void setup(){
 
   Serial.begin(115200);
+  BT.begin(9600);
 
   servoZ.attach(SERVO_PIN);
 
@@ -468,26 +427,13 @@ void loop(){
   if(Serial.available()){
 
     String line = Serial.readStringUntil('\n');
+    executeGcode(line);
 
-    line.trim();
+  }
 
-    if(typeFileMode){
+  if(BT.available()){
 
-      if(line == "ENDFILE"){
-
-        typeFileMode=false;
-
-        Serial.println("TYPEFILE finalizado");
-
-        return;
-
-      }
-
-      typeLine(line);
-      return;
-
-    }
-
+    String line = BT.readStringUntil('\n');
     executeGcode(line);
 
   }
