@@ -23,6 +23,10 @@ SoftwareSerial BT(A3, 13);
 #define X_MAX 600
 #define Z_MAX 700
 
+// NOVO: Limites Mínimos (Permite ir para posições negativas)
+#define X_MIN -18
+#define Z_MIN -10
+
 #define BACKOFF_STEPS 20
 
 // ===== VELOCIDADE =====
@@ -39,7 +43,7 @@ SoftwareSerial BT(A3, 13);
 #define SERVO_SPEED 4
 #define SERVO_PRESS_TIME 60
 
-// ===== BUFFER (Reduzido para economizar RAM) =====
+// ===== BUFFER =====
 #define CMD_BUFFER_SIZE 5
 
 String cmdBuffer[CMD_BUFFER_SIZE];
@@ -50,7 +54,7 @@ long posX = 0;
 long posZ = 0;
 
 bool repeatRunning = false;
-bool isCapsActive = false; // <-- NOVO: Controla o estado do Caps Lock
+bool isCapsActive = false; 
 
 // ============================
 // BUFFER
@@ -97,13 +101,15 @@ void moveTo(long x, long z) {
   for (long i = 0; i < maxSteps; i++) {
     accX += incX; accZ += incZ;
     if (accX >= 1) {
-      if ((dirX && posX < X_MAX) || (!dirX && posX > 0)) {
+      // ALTERADO: Troquei posX > 0 por posX > X_MIN
+      if ((dirX && posX < X_MAX) || (!dirX && posX > X_MIN)) {
         stepPulse(X_STEP, STEP_DELAY_WORK_X); posX += dirX ? 1 : -1;
       }
       accX -= 1;
     }
     if (accZ >= 1) {
-      if ((dirZ && posZ < Z_MAX) || (!dirZ && posZ > 0)) {
+      // ALTERADO: Troquei posZ > 0 por posZ > Z_MIN
+      if ((dirZ && posZ < Z_MAX) || (!dirZ && posZ > Z_MIN)) {
         stepPulse(Z_STEP, STEP_DELAY_WORK_Z); posZ += dirZ ? 1 : -1;
       }
       accZ -= 1;
@@ -126,7 +132,7 @@ void homing() {
   homingAxis(X_STEP, X_DIR, X_LIMIT, STEP_DELAY_HOME_X, posX, INVERT_X_DIR);
   delay(200);
   homingAxis(Z_STEP, Z_DIR, Z_LIMIT, STEP_DELAY_HOME_Z, posZ, INVERT_Z_DIR);
-  isCapsActive = false; // Resetamos o estado lógico do Caps Lock
+  isCapsActive = false; 
   Serial.println(F("Zero definido"));
 }
 
@@ -164,12 +170,13 @@ KeyMap keys[] = {
   {"I", 100, 120}, {"U", 80, 112}, {"Y", 62, 114}, {"T", 46, 116},
   {"R", 30, 120}, {"E", 22, 133}, {"W", 16, 145}, {"Q", 13, 164},
   {"TIL", 176, 197}, {"ACU", 162, 156}, {"CED", 159, 181}, {"CIR", 0, 0}, 
-  {"GRV", 0, 0}, {"CAPS", 36, 211},{",", 140, 190},{".", 162, 208} // <-- NOVO: Tecla Caps Lock adicionada
+  {"GRV", 0, 0}, {"CAPS", 36, 211},{",", 140, 190},{".", 162, 208},
+  {"1", -18, 141}, {"2", -8, 122},{"3", 0, 109},{"4", 14, 99},{"5", 28, 90},
+  {"6", 45, 86}, {"7", 63, 85},{"8", 89, 93},{"9", 109, 99},{"0", 127, 112}
 };
 
 int keyCount = sizeof(keys) / sizeof(keys[0]);
 
-// NOVO: Adicionado um booleano `isUpper` para saber se a letra final é maiúscula
 struct ComboKey {
   char trigger[4];
   char key1[6];
@@ -178,18 +185,18 @@ struct ComboKey {
 };
 
 ComboKey combos[] = {
-  {"\xC3\xA3", "TIL", "A", false}, {"\xC3\x83", "TIL", "A", true}, // ã, Ã
-  {"\xC3\xB5", "TIL", "O", false}, {"\xC3\x95", "TIL", "O", true}, // õ, Õ
-  {"\xC3\xA1", "ACU", "A", false}, {"\xC3\x81", "ACU", "A", true}, // á, Á
-  {"\xC3\xA9", "ACU", "E", false}, {"\xC3\x89", "ACU", "E", true}, // é, É
-  {"\xC3\xAD", "ACU", "I", false}, {"\xC3\x8D", "ACU", "I", true}, // í, Í
-  {"\xC3\xB3", "ACU", "O", false}, {"\xC3\x93", "ACU", "O", true}, // ó, Ó
-  {"\xC3\xBA", "ACU", "U", false}, {"\xC3\x9A", "ACU", "U", true}, // ú, Ú
-  {"\xC3\xA2", "CIR", "A", false}, {"\xC3\x82", "CIR", "A", true}, // â, Â
-  {"\xC3\xAA", "CIR", "E", false}, {"\xC3\x8A", "CIR", "E", true}, // ê, Ê
-  {"\xC3\xB4", "CIR", "O", false}, {"\xC3\x94", "CIR", "O", true}, // ô, Ô
-  {"\xC3\xA0", "GRV", "A", false}, {"\xC3\x80", "GRV", "A", true}, // à, À
-  {"\xC3\xA7", "CED", "", false},  {"\xC3\x87", "CED", "", true}   // ç, Ç
+  {"\xC3\xA3", "TIL", "A", false}, {"\xC3\x83", "TIL", "A", true}, 
+  {"\xC3\xB5", "TIL", "O", false}, {"\xC3\x95", "TIL", "O", true}, 
+  {"\xC3\xA1", "ACU", "A", false}, {"\xC3\x81", "ACU", "A", true}, 
+  {"\xC3\xA9", "ACU", "E", false}, {"\xC3\x89", "ACU", "E", true}, 
+  {"\xC3\xAD", "ACU", "I", false}, {"\xC3\x8D", "ACU", "I", true}, 
+  {"\xC3\xB3", "ACU", "O", false}, {"\xC3\x93", "ACU", "O", true}, 
+  {"\xC3\xBA", "ACU", "U", false}, {"\xC3\x9A", "ACU", "U", true}, 
+  {"\xC3\xA2", "CIR", "A", false}, {"\xC3\x82", "CIR", "A", true}, 
+  {"\xC3\xAA", "CIR", "E", false}, {"\xC3\x8A", "CIR", "E", true}, 
+  {"\xC3\xB4", "CIR", "O", false}, {"\xC3\x94", "CIR", "O", true}, 
+  {"\xC3\xA0", "GRV", "A", false}, {"\xC3\x80", "GRV", "A", true}, 
+  {"\xC3\xA7", "CED", "", false},  {"\xC3\x87", "CED", "", true}   
 };
 
 int comboCount = sizeof(combos) / sizeof(combos[0]);
@@ -218,12 +225,14 @@ void jogAxis(char axis, long steps) {
   int dirP  = (axis == 'X') ? X_DIR : Z_DIR;
   bool inv  = (axis == 'X') ? INVERT_X_DIR : INVERT_Z_DIR;
   long maxP = (axis == 'X') ? X_MAX : Z_MAX;
+  long minP = (axis == 'X') ? X_MIN : Z_MIN; // NOVO: Mínimo configurável
   long &curP = (axis == 'X') ? posX : posZ;
   int dly   = (axis == 'X') ? STEP_DELAY_WORK_X : STEP_DELAY_WORK_Z;
 
   setDir(dirP, dir, inv);
   for (long i = 0; i < count; i++) {
-    if ((dir && curP < maxP) || (!dir && curP > 0)) {
+    // ALTERADO: curP > 0 substituído por curP > minP
+    if ((dir && curP < maxP) || (!dir && curP > minP)) {
       stepPulse(stepP, dly); curP += dir ? 1 : -1;
     }
   }
@@ -271,7 +280,6 @@ bool waitWithStop(unsigned long ms) {
   return true;
 }
 
-// NOVO: Função centralizada para buscar a coordenada e apertar
 void typeKey(const char* k) {
   for (int i = 0; i < keyCount; i++) {
     if (strcmp(keys[i].key, k) == 0) {
@@ -282,7 +290,6 @@ void typeKey(const char* k) {
   }
 }
 
-// NOVO: Função que verifica o estado do CAPS e aciona se necessário
 void setCapsState(bool state) {
   if (isCapsActive != state) {
     typeKey("CAPS");
@@ -295,24 +302,21 @@ void typeText(String text) {
   while (i < (int)text.length()) {
     char c = text.charAt(i);
 
-    // Tratamento de espaço
     if (c == ' ') { 
       typeKey("ESP"); 
       i++; 
       continue; 
     }
 
-    // Tratamento de Combos (Acentos + Letra)
     int ci = findCombo(text, i);
     if (ci >= 0) {
-      setCapsState(combos[ci].isUpper); // Liga ou desliga o CAPS de acordo com o combo
+      setCapsState(combos[ci].isUpper); 
       typeKey(combos[ci].key1);
       if (combos[ci].key2[0] != '\0') typeKey(combos[ci].key2);
       i += strlen(combos[ci].trigger);
       continue;
     }
 
-    // Letras Normais (A-Z ou a-z)
     if (c >= 'A' && c <= 'Z') {
       setCapsState(true);
       char buf[2] = {c, '\0'};
@@ -320,21 +324,18 @@ void typeText(String text) {
     } 
     else if (c >= 'a' && c <= 'z') {
       setCapsState(false);
-      char upper = c - 32; // Converte pra maiusculo apenas pra encontrar no array de mapeamento
+      char upper = c - 32; 
       char buf[2] = {upper, '\0'};
       typeKey(buf);
     } 
     else {
-      // Outros caracteres (pontuação, números, etc)
       char upper = (c >= 'a' && c <= 'z') ? c - 32 : c;
       char buf[2] = {upper, '\0'};
       typeKey(buf);
     }
-
     i++;
   }
   
-  // No fim do texto, desligamos o Caps Lock por segurança
   setCapsState(false);
   typeKey("ENTER");
 }
@@ -366,7 +367,7 @@ void executeGcode(String line) {
   line.toUpperCase();
 
   if (line.startsWith(F("TYPE "))) {
-    typeText(original.substring(5)); // Manda o texto exato escrito (com maiúsculas e minúsculas)
+    typeText(original.substring(5)); 
   } else if (line.startsWith(F("REPEAT "))) {
     handleRepeat(line, original);
   } else if (line == F("STOP")) {
